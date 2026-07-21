@@ -1,0 +1,14 @@
+# Databricks App configuration — Ontology MCP server (PRD Sec. 11).
+command: ["python", "server.py"]
+
+env:
+  - name: ONTOLOGY_CATALOG
+    valueFrom: ontology_catalog
+  - name: DATABRICKS_WAREHOUSE_HTTP_PATH
+    valueFrom: warehouse_http_path
+  - name: LAKEBASE_HOST
+    valueFrom: lakebase_host
+  - name: LAKEBASE_DATABASE
+    value: ontology_state
+  - name: LAKEBASE_USER
+    valueFrom: lakebase_service_principal

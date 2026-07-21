@@ -1,0 +1,2 @@
+enterprise-ontology
+mcp>=1.2.0

@@ -1,0 +1,129 @@
+# Databricks Asset Bundle for the Enterprise Ontology Framework for Agentic AI.
+# Deploys: UC catalog/schemas + Delta DDL, Lakebase database + DDL, three
+# Databricks Apps (API, MCP server, admin UI) and three scheduled jobs.
+#
+# Usage:
+#   databricks bundle validate -t dev
+#   databricks bundle deploy   -t dev
+
+bundle:
+  name: enterprise-ontology-framework
+
+variables:
+  ontology_catalog:
+    description: Unity Catalog catalog that hosts the ontology + audit schemas
+    default: enterprise_ontology
+  lakebase_instance:
+    description: Name of the Lakebase (managed Postgres) database instance
+    default: ontology-state
+  warehouse_id:
+    description: SQL warehouse used to run DDL / jobs
+    default: ${var.warehouse_id}
+
+include:
+  - resources/*.yml
+
+artifacts:
+  ontology_framework_wheel:
+    type: whl
+    path: ./src
+    build: python -m build --wheel
+
+resources:
+  jobs:
+    ontology_ddl_bootstrap:
+      name: "[${bundle.target}] Ontology - Bootstrap UC + Lakebase DDL"
+      tasks:
+        - task_key: create_uc_schemas_and_tables
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            file:
+              path: ./sql/unity_catalog/001_create_catalog_schemas.sql
+        - task_key: create_ontology_registry_tables
+          depends_on:
+            - task_key: create_uc_schemas_and_tables
+          sql_task:
+            warehouse_id: ${var.warehouse_id}
+            file:
+              path: ./sql/unity_catalog/999_run_all.sql
+        - task_key: create_lakebase_tables
+          depends_on:
+            - task_key: create_ontology_registry_tables
+          python_wheel_task:
+            package_name: enterprise_ontology
+            entry_point: bootstrap_lakebase
+            parameters: ["--instance", "${var.lakebase_instance}"]
+
+    ontology_drift_detection:
+      name: "[${bundle.target}] Ontology - Drift Detection"
+      schedule:
+        quartz_cron_expression: "0 0 * * * ?"   # hourly
+        timezone_id: "UTC"
+      tasks:
+        - task_key: detect_drift
+          python_wheel_task:
+            package_name: enterprise_ontology
+            entry_point: run_drift_detection
+
+    ontology_cache_warm:
+      name: "[${bundle.target}] Ontology - Warm L2 Cache"
+      schedule:
+        quartz_cron_expression: "0 */15 * * * ?"  # every 15 min
+        timezone_id: "UTC"
+      tasks:
+        - task_key: warm_cache
+          python_wheel_task:
+            package_name: enterprise_ontology
+            entry_point: run_cache_warm
+
+    ontology_evaluation:
+      name: "[${bundle.target}] Ontology - Gold Evaluation Suite"
+      schedule:
+        quartz_cron_expression: "0 0 6 * * ?"   # daily 06:00 UTC
+        timezone_id: "UTC"
+      tasks:
+        - task_key: run_gold_eval
+          python_wheel_task:
+            package_name: enterprise_ontology
+            entry_point: run_evaluation
+
+  apps:
+    ontology_api:
+      name: ontology-api
+      description: REST API over the ontology registry (Sec. 20 endpoints)
+      source_code_path: ./apps/ontology_api
+
+    ontology_mcp_server:
+      name: ontology-mcp-server
+      description: Reusable Ontology MCP server exposing the typed governed tools from PRD Sec. 11
+      source_code_path: ./apps/ontology_mcp_server
+
+    ontology_admin_ui:
+      name: ontology-admin-ui
+      description: Governance UI - change requests, certification, drift dashboard
+      source_code_path: ./apps/ontology_admin_ui
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: ${workspace.host}
+    variables:
+      ontology_catalog: enterprise_ontology_dev
+
+  staging:
+    mode: production
+    workspace:
+      host: ${workspace.host}
+    variables:
+      ontology_catalog: enterprise_ontology_staging
+
+  prod:
+    mode: production
+    workspace:
+      host: ${workspace.host}
+    variables:
+      ontology_catalog: enterprise_ontology
+    run_as:
+      service_principal_name: ${var.prod_service_principal}
