@@ -1,0 +1,29 @@
+-- Run-order manifest for humans. Unity Catalog SQL has no `\i` include
+-- directive, so this file is NOT executed directly — the
+-- `ontology_ddl_bootstrap` job (see databricks.yml) and
+-- src/enterprise_ontology/jobs/bootstrap_uc.py apply the files below, in this
+-- order, against the configured SQL warehouse, substituting ${catalog} for
+-- the bundle target's var.ontology_catalog value.
+--
+-- 001_create_catalog_schemas.sql
+-- 010_ontology_concept.sql
+-- 011_ontology_relationship.sql
+-- 012_ontology_synonym.sql
+-- 013_ontology_metric_definition.sql
+-- 014_ontology_dimension_definition.sql
+-- 015_ontology_hierarchy.sql
+-- 016_ontology_hierarchy_node.sql
+-- 017_ontology_business_rule.sql
+-- 018_ontology_asset_mapping.sql
+-- 019_ontology_document_mapping.sql
+-- 020_ontology_security_scope.sql
+-- 021_ontology_authority_source.sql
+-- 022_ontology_version.sql
+-- 023_ontology_change_request.sql
+-- 024_ontology_approval_history.sql
+-- 025_ontology_drift_event.sql
+-- 026_ontology_domain_registry.sql
+-- 027_ontology_agent_mapping.sql
+-- 028_ontology_tool_mapping.sql
+-- 029_ontology_test_question.sql
+-- 030_audit_tables.sql
