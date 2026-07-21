@@ -1,0 +1,139 @@
+# =============================================================================
+# Domain ontology onboarding template — PRD Sec. 7 ("bounded ontology model":
+# create bounded domain ontologies that reference shared enterprise concepts
+# rather than redefining them) and Sec. 29 Epic 1 ("first domain ontology").
+#
+# HOW TO USE:
+#   1. Copy this file to templates/domains/<your_domain>.yaml
+#   2. Fill in every section below with your domain's concepts, metrics,
+#      dimensions, rules and asset mappings.
+#   3. Run: python templates/new_domain_scaffold.py --from-file templates/domains/<your_domain>.yaml
+#      This loads the YAML and inserts DRAFT rows into the ontology.* tables
+#      via change requests — nothing here activates automatically (design
+#      principle 12: new ontology elements require review and approval).
+#   4. Submit for Domain Review -> Data Review -> Security Review -> Approved
+#      -> Active, per the lifecycle in PRD Sec. 22.
+#
+# Reference the shared enterprise concepts (PRD Sec. 7) instead of redefining
+# them: Organization, Legal Entity, Geography, Currency, Fiscal Calendar,
+# Product Hierarchy, Customer Hierarchy, Security Classification, Identity, Time.
+# =============================================================================
+
+domain: finance                       # lowercase, no spaces — becomes ontology.domain_registry.domain
+description: "Finance domain ontology: revenue, margin, and close-process concepts"
+steward: "finance-data-eng@yourco.com"
+
+# Shared enterprise concepts this domain relies on (do not redefine these —
+# reference them by concept_id; they live in the enterprise-wide bootstrap).
+shared_concepts_referenced:
+  - ORG.LEGAL_ENTITY
+  - TIME.FISCAL_CALENDAR
+  - GEO.COUNTRY
+
+# -----------------------------------------------------------------------
+# Concepts — PRD Sec. 6.1. One entry per business concept.
+# -----------------------------------------------------------------------
+concepts:
+  - concept_id: METRIC.NET_REVENUE
+    canonical_name: "Net Revenue"
+    concept_type: MEASURE
+    definition: "Gross revenue less returns, allowances and discounts, recognized per ASC 606."
+    domain: finance
+    subdomain: revenue
+    owner: "finance-data-eng@yourco.com"
+    steward: "controller@yourco.com"
+    authority_level: "1_CERTIFIED_METRIC_VIEW_OR_FUNCTION"
+    sensitivity: CONFIDENTIAL
+    discoverability: REQUEST_ACCESS
+    examples: ["Q2 FY26 net revenue by operating unit"]
+    non_examples: ["Gross bookings (not the same concept — see METRIC.GROSS_BOOKINGS)"]
+
+  - concept_id: ORG.OPERATING_UNIT
+    canonical_name: "Operating Unit"
+    concept_type: DIMENSION
+    definition: "The lowest-level P&L-reporting business unit."
+    domain: finance
+    owner: "finance-data-eng@yourco.com"
+    authority_level: "4_APPROVED_GLOSSARY"
+    sensitivity: INTERNAL
+    discoverability: OPEN
+
+# -----------------------------------------------------------------------
+# Synonyms — PRD Sec. 6.5. Include PROHIBITED_EQUIVALENCE for near-misses.
+# -----------------------------------------------------------------------
+synonyms:
+  - concept_id: METRIC.NET_REVENUE
+    term: "net sales"
+    synonym_type: EXACT
+  - concept_id: METRIC.NET_REVENUE
+    term: "revenue"
+    synonym_type: CONTEXTUAL
+    confidence: 0.85
+  - concept_id: METRIC.NET_REVENUE
+    term: "gross bookings"
+    synonym_type: PROHIBITED_EQUIVALENCE   # explicitly NOT the same thing
+
+# -----------------------------------------------------------------------
+# Metrics — PRD Sec. 6.3. certified_source_asset MUST already exist in UC.
+# -----------------------------------------------------------------------
+metrics:
+  - metric_id: METRIC.NET_REVENUE
+    concept_id: METRIC.NET_REVENUE
+    business_definition: "Gross revenue less returns, allowances and discounts."
+    formula: "gross_revenue - returns - allowances - discounts"
+    aggregation_behavior: SUM
+    allowed_dimension_ids: [ORG.OPERATING_UNIT, GEO.COUNTRY, TIME.FISCAL_CALENDAR]
+    time_grain: MONTH
+    currency: USD
+    comparison_rules: [PRIOR_PERIOD, PRIOR_YEAR, BUDGET]
+    certified_source_asset: "enterprise_ontology.finance_gold.net_revenue_mv"
+    is_certified: true
+
+# -----------------------------------------------------------------------
+# Dimensions — PRD Sec. 6.3.
+# -----------------------------------------------------------------------
+dimensions:
+  - dimension_id: ORG.OPERATING_UNIT
+    concept_id: ORG.OPERATING_UNIT
+    key_column: operating_unit_id
+    label_column: operating_unit_name
+    allowed_operators: [EQUALS, IN, CONTAINS_HIERARCHY_PATH]
+    value_resolution_strategy: HIERARCHY_PATH
+    high_cardinality: false
+    requires_obo: false
+
+# -----------------------------------------------------------------------
+# Business rules — PRD Sec. 6.4. executable_reference must point at a real
+# metric view / UC function / DQ rule — never leave critical rules prompt-only.
+# -----------------------------------------------------------------------
+business_rules:
+  - rule_id: RULE.NET_REVENUE_MATERIALITY
+    concept_id: METRIC.NET_REVENUE
+    rule_type: MATERIALITY
+    description: "Net revenue variance >$50K vs. budget requires a variance note in commentary."
+    executable_reference: "enterprise_ontology.finance_gold.fn_revenue_materiality_check"
+
+# -----------------------------------------------------------------------
+# Asset mappings — PRD Sec. 6.6.
+# -----------------------------------------------------------------------
+asset_mappings:
+  - mapping_id: MAP.NET_REVENUE.METRIC_VIEW
+    concept_id: METRIC.NET_REVENUE
+    asset_type: METRIC_VIEW
+    fully_qualified_asset_name: "enterprise_ontology.finance_gold.net_revenue_mv"
+    is_certified: true
+    data_quality_state: PASSING
+    source_system: "SAP FI/CO"
+    freshness_sla_minutes: 60
+
+# -----------------------------------------------------------------------
+# Gold test questions — PRD Sec. 24, 29 (100 questions is the Phase 1 bar).
+# -----------------------------------------------------------------------
+test_questions:
+  - test_question_id: TQ.FINANCE.001
+    domain: finance
+    question_text: "What was net revenue by operating unit last quarter?"
+    expected_concept_ids: [METRIC.NET_REVENUE, ORG.OPERATING_UNIT]
+    expected_metric_ids: [METRIC.NET_REVENUE]
+    expected_dimension_ids: [ORG.OPERATING_UNIT]
+    category: METRIC_SELECTION
